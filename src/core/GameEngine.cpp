@@ -214,10 +214,12 @@ void GameEngine::handleRiddleAnswer(const QString& answer)
     // Генерируем описание комнаты ПОСЛЕ ответа
     generateRoomDescription(newState);
 
+    // Сначала обновляем внутреннее состояние
     m_currentState = newState;
 
-    qDebug() << "Emitting gameStateChanged with logs count:" << m_currentState.getLogs().size();
-    emit gameStateChanged(m_currentState);
+    qDebug() << "Emitting gameStateChanged with logs count:" << newState.getLogs().size();
+    emit gameStateChanged(newState);  // Отправляем НОВОЕ состояние, а не старое
+
 }
 
 
