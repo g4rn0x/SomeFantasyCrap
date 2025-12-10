@@ -217,19 +217,23 @@ void GameWidget::onRiddleEncountered(const RiddleData& riddle)
     qDebug() << "=== onRiddleEncountered called ===";
     qDebug() << "Question:" << riddle.question;
     qDebug() << "Correct answer:" << riddle.answer;
+    
     RiddleDialog dialog(riddle, this);
-    int result = dialog.exec();
+    int result = dialog.exec();  // Вызываем ТОЛЬКО ОДИН РАЗ
 
     qDebug() << "Dialog result:" << result << "(Accepted=" << QDialog::Accepted << ")";
 
-    if (dialog.exec() == QDialog::Accepted) {
+    if (result == QDialog::Accepted) {  // Используем сохранённый результат
         QString answer = dialog.getAnswer();
         qDebug() << "User answer: " << answer;
-        m_engine->handleRiddleAnswer(dialog.getAnswer());
+        m_engine->handleRiddleAnswer(answer);
     } else {
-        qDebug() << "Dialog rejected";
+        qDebug() << "Dialog rejected - skipping riddle";
+        // Можно добавить обработку пропуска загадки
+        m_engine->handleRiddleAnswer("");  // Пустой ответ = неправильный
     }
 }
+
 
 void GameWidget::onNotesButtonClicked()
 {
