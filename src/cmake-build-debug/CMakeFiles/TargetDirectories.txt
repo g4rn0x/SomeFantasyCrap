@@ -1,5 +1,0 @@
-D:/CLionProjects/Курсовая_работа_ООП/new/src/cmake-build-debug/CMakeFiles/MyGame.dir
-D:/CLionProjects/Курсовая_работа_ООП/new/src/cmake-build-debug/CMakeFiles/edit_cache.dir
-D:/CLionProjects/Курсовая_работа_ООП/new/src/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-D:/CLionProjects/Курсовая_работа_ООП/new/src/cmake-build-debug/CMakeFiles/MyGame_autogen_timestamp_deps.dir
-D:/CLionProjects/Курсовая_работа_ООП/new/src/cmake-build-debug/CMakeFiles/MyGame_autogen.dir
