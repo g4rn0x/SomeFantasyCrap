@@ -36,3 +36,4 @@ Makefile
 
 # Lock files
 *.lock
+dist/
