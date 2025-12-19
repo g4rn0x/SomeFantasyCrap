@@ -1,0 +1,148 @@
+==JsonUtils.cpp==
+
+#include "JsonUtils.h"
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QDebug>
+
+QString JsonUtils::inventoryToJson(const QVector<int>& inventory)
+{
+    QJsonArray array;
+    for (int item : inventory) {
+        array.append(item);
+    }
+    QJsonDocument doc(array);
+    return QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+}
+
+QString JsonUtils::logsToJson(const QVector<QString>& logs)
+{
+    QJsonArray array;
+    for (const QString& log : logs) {
+        array.append(log);
+    }
+    QJsonDocument doc(array);
+    return QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+}
+
+QVector<int> JsonUtils::inventoryFromJson(const QString& json)
+{
+    QVector<int> inventory;
+    QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+    
+    if (!doc.isArray()) {
+        qWarning() << "Invalid inventory JSON format";
+        return inventory;
+    }
+
+    QJsonArray array = doc.array();
+    for (const QJsonValue& value : array) {
+        if (value.isDouble()) {
+            inventory.append(static_cast<int>(value.toDouble()));
+        }
+    }
+    return inventory;
+}
+
+QVector<QString> JsonUtils::logsFromJson(const QString& json)
+{
+    QVector<QString> logs;
+    QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+    
+    if (!doc.isArray()) {
+        qWarning() << "Invalid logs JSON format";
+        return logs;
+    }
+
+    QJsonArray array = doc.array();
+    for (const QJsonValue& value : array) {
+        if (value.isString()) {
+            logs.append(value.toString());
+        }
+    }
+    return logs;
+}
+
+
+==JsonUtils.h==
+
+#pragma once
+
+#include <QString>
+#include <QVector>
+
+/**
+ * @brief JsonUtils - Utility functions for JSON serialization
+ */
+class JsonUtils {
+public:
+    JsonUtils() = delete;
+
+    // Serialize game data to JSON
+    static QString inventoryToJson(const QVector<int>& inventory);
+    static QString logsToJson(const QVector<QString>& logs);
+
+    // Deserialize game data from JSON
+    static QVector<int> inventoryFromJson(const QString& json);
+    static QVector<QString> logsFromJson(const QString& json);
+};
+
+
+==RandomGenerator.cpp==
+
+#include "RandomGenerator.h"
+#include <cstdlib>
+#include <ctime>
+#include <random>
+
+static std::mt19937 g_generator;
+
+int RandomGenerator::random(int min, int max)
+{
+    if (min > max) {
+        std::swap(min, max);
+    }
+    if (min == max) {
+        return min;
+    }
+    std::uniform_int_distribution<> distribution(min, max);
+    return distribution(g_generator);
+}
+
+double RandomGenerator::randomDouble()
+{
+    std::uniform_real_distribution<> distribution(0.0, 1.0);
+    return distribution(g_generator);
+}
+
+void RandomGenerator::initializeSeed()
+{
+    std::random_device rd;
+    g_generator.seed(rd());
+}
+
+
+==RandomGenerator.h==
+
+#pragma once
+
+#include <QDebug>
+
+/**
+ * @brief RandomGenerator - Utility for random number generation
+ */
+class RandomGenerator {
+public:
+    // Delete constructor - static utility class
+    RandomGenerator() = delete;
+
+    // Generate random integer in range [min, max]
+    static int random(int min, int max);
+
+    // Generate random double in range [0.0, 1.0]
+    static double randomDouble();
+
+    // Initialize random seed (call once at application start)
+    static void initializeSeed();
+};
+

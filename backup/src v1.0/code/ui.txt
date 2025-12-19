@@ -1,0 +1,321 @@
+==GameWidget.cpp==
+
+#include "GameWidget.h"
+#include "../core/GameEngine.h"
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QScrollArea>
+#include <QTextEdit>
+
+GameWidget::GameWidget(GameEngine* engine, QWidget* parent)
+    : QWidget(parent), m_engine(engine)
+{
+    setupUI();
+}
+
+void GameWidget::setupUI()
+{
+    QVBoxLayout* mainLayout = new QVBoxLayout(this);
+    
+    // Room description
+    m_descriptionLabel = new QLabel(this);
+    m_descriptionLabel->setStyleSheet("QLabel { background-color: #2a2a2a; color: #00ff00; padding: 15px; font-size: 14px; border-radius: 5px; }");
+    m_descriptionLabel->setWordWrap(true);
+    m_descriptionLabel->setMinimumHeight(100);
+    mainLayout->addWidget(m_descriptionLabel);
+    
+    // Status bar
+    m_statusLabel = new QLabel(this);
+    m_statusLabel->setStyleSheet("QLabel { background-color: #1a1a1a; color: #ffff00; padding: 10px; font-weight: bold; }");
+    mainLayout->addWidget(m_statusLabel);
+    
+    // Inventory
+    m_inventoryLabel = new QLabel(this);
+    m_inventoryLabel->setStyleSheet("QLabel { background-color: #1a1a1a; color: #00aaff; padding: 10px; }");
+    mainLayout->addWidget(m_inventoryLabel);
+    
+    // Doors section
+    QLabel* doorsLabel = new QLabel("Выберите дверь:", this);
+    doorsLabel->setStyleSheet("QLabel { color: #ffffff; font-weight: bold; font-size: 16px; padding: 10px; }");
+    mainLayout->addWidget(doorsLabel);
+    
+    m_doorsLayout = new QVBoxLayout();
+    mainLayout->addLayout(m_doorsLayout);
+    
+    // Stretch to fill
+    mainLayout->addStretch();
+    
+    setLayout(mainLayout);
+}
+
+void GameWidget::onGameInitialized(const GameState& state)
+{
+    updateDisplay(state);
+}
+
+void GameWidget::onGameStateChanged(const GameState& state)
+{
+    updateDisplay(state);
+}
+
+void GameWidget::onErrorOccurred(const QString& error)
+{
+    m_statusLabel->setText(QString("❌ ОШИБКА: %1").arg(error));
+}
+
+void GameWidget::updateDisplay(const GameState& state)
+{
+    // Update description
+    m_descriptionLabel->setText(state.getRoomDescription());
+    
+    // Update status
+    QString status = QString("Локация: %1/5 | Комната: %2/10 | Золото: %3")
+        .arg(state.getCurrentLocationIndex() + 1)
+        .arg(state.getCurrentRoomIndex() + 1)
+        .arg(state.getGoldBars());
+    m_statusLabel->setText(status);
+
+
+    
+    // Update inventory
+    QString inventory = " Инвентарь (";
+    for (ItemType item : state.getInventory()) {
+        inventory += itemTypeToString(item) + "; ";
+    }
+    inventory += QString("%1/%2)").arg(state.getInventory().size()).arg(MAX_INVENTORY_SIZE);
+    m_inventoryLabel->setText(inventory);
+    
+    // Update door buttons
+    updateDoorButtons(state);
+    
+    // Check win/lose conditions
+    if (state.isGameWon()) {
+        m_statusLabel->setText(" ПОБЕДА! Вы прошли все локации!");
+    }
+}
+
+void GameWidget::updateDoorButtons(const GameState& state)
+{
+    // Clear old buttons
+    for (QPushButton* btn : m_doorButtons) {
+        delete btn;
+    }
+    m_doorButtons.clear();
+    
+    // Create new buttons for current doors
+    int doorIndex = 0;
+    for (const DoorData& door : state.getCurrentDoors()) {
+        QPushButton* button = new QPushButton(
+            QString("Дверь %1: %2").arg(doorIndex + 1).arg(doorTypeToString(door.type)),
+            this
+        );
+        
+        // Color by type
+        QString style = "QPushButton { padding: 10px; font-size: 14px; font-weight: bold; ";
+        if (door.type == DoorType::NORMAL) {
+            style += "background-color: #4a4a4a; color: #ffffff; ";
+        } else if (door.type == DoorType::SILVER) {
+            style += "background-color: #c0c0c0; color: #000000; ";
+        } else { // GOLD
+            style += "background-color: #ffd700; color: #000000; ";
+        }
+        style += "border-radius: 5px; }"
+                 "QPushButton:hover { opacity: 0.8; }";
+        button->setStyleSheet(style);
+        button->setMinimumHeight(40);
+        
+        int currentIndex = doorIndex;
+        connect(button, &QPushButton::clicked, this, [this, currentIndex]() {
+            onDoorClicked(currentIndex);
+        });
+        
+        m_doorsLayout->addWidget(button);
+        m_doorButtons.append(button);
+        doorIndex++;
+    }
+}
+
+void GameWidget::onDoorClicked(int doorIndex)
+{
+    if (!m_engine) return;
+    emit doorSelected(doorIndex);
+    // This would be called by the game engine through the signal
+    // The actual move processing is handled by GameEngine
+}
+
+
+==GameWidget.h==
+
+#pragma once
+
+#include <QWidget>
+#include <QLabel>
+#include <QPushButton>
+#include <QVBoxLayout>
+#include "../core/GameState.h"
+
+class GameEngine;
+
+/**
+ * @brief GameWidget - Main game display widget
+ */
+class GameWidget : public QWidget {
+    Q_OBJECT
+
+public:
+    explicit GameWidget(GameEngine* engine, QWidget* parent = nullptr);
+
+public slots:
+    void onGameInitialized(const GameState& state);
+    void onGameStateChanged(const GameState& state);
+    void onErrorOccurred(const QString& error);
+signals:
+    void doorSelected(int doorIndex);
+private:
+    void setupUI();
+    void updateDisplay(const GameState& state);
+    void updateDoorButtons(const GameState& state);
+    void onDoorClicked(int doorIndex);
+
+    GameEngine* m_engine = nullptr;
+    QLabel* m_descriptionLabel = nullptr;
+    QLabel* m_statusLabel = nullptr;
+    QLabel* m_inventoryLabel = nullptr;
+    QVBoxLayout* m_doorsLayout = nullptr;
+    QVector<QPushButton*> m_doorButtons;
+};
+
+
+==InventoryWidget.cpp==
+
+#include "InventoryWidget.h"
+#include <QString>
+#include <QIcon>
+
+InventoryWidget::InventoryWidget(QWidget* parent)
+    : QWidget(parent)
+    , m_inventoryList(new QListWidget(this))
+{
+    auto* layout = new QVBoxLayout(this);
+    layout->addWidget(m_inventoryList);
+    setLayout(layout);
+
+    // Basic styling
+    m_inventoryList->setIconSize(QSize(32, 32));
+    setMinimumWidth(200);
+}
+
+void InventoryWidget::updateInventory(const QVector<ItemType>& items) {
+    m_inventoryList->clear();
+
+    for (const auto& item : items) {
+        auto* itemWidget = new QListWidgetItem(itemTypeToString(item), m_inventoryList);
+        m_inventoryList->addItem(itemWidget);
+    }
+}
+
+
+==InventoryWidget.h==
+
+#pragma once
+
+#include <QWidget>
+#include <QListWidget>
+#include <QVBoxLayout>
+#include <QVector>
+#include "../core/Types.h"
+
+QString itemTypeToString(ItemType type);
+
+class InventoryWidget : public QWidget {
+    Q_OBJECT
+
+public:
+    explicit InventoryWidget(QWidget* parent = nullptr);
+    void updateInventory(const QVector<ItemType>& items);
+
+private:
+    QListWidget* m_inventoryList;
+};
+
+
+==MainWindow.cpp==
+
+#include "MainWindow.h"
+#include "GameWidget.h"
+#include "../core/GameEngine.h"
+#include <QVBoxLayout>
+#include <QWidget>
+#include <QTimer>
+
+MainWindow::MainWindow(QWidget* parent)
+    : QMainWindow(parent),
+      m_engine(std::make_unique<GameEngine>()),
+      m_gameWidget(new GameWidget(m_engine.get(), this))
+{
+    setupUI();
+    connectSignals();
+    
+    setWindowTitle("🎮 Лабиринт - Текстовая RPG");
+    resize(1200, 800);
+    
+    // Initialize game
+    QTimer::singleShot(0, m_engine.get(), &GameEngine::initializeGame);
+}
+
+MainWindow::~MainWindow() = default;
+
+void MainWindow::setupUI()
+{
+    // Create central widget
+    QWidget* centralWidget = new QWidget(this);
+    QVBoxLayout* layout = new QVBoxLayout(centralWidget);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->addWidget(m_gameWidget);
+    
+    setCentralWidget(centralWidget);
+}
+
+void MainWindow::connectSignals()
+{
+    // Connect engine signals to game widget
+    connect(m_engine.get(), &GameEngine::gameInitialized,
+            m_gameWidget, &GameWidget::onGameInitialized);
+    connect(m_engine.get(), &GameEngine::gameStateChanged,
+            m_gameWidget, &GameWidget::onGameStateChanged);
+    connect(m_engine.get(), &GameEngine::errorOccurred,
+            m_gameWidget, &GameWidget::onErrorOccurred);
+    connect(m_gameWidget, &GameWidget::doorSelected,
+            m_engine.get(), &GameEngine::onDoorSelected);
+}
+
+
+==MainWindow.h==
+
+#pragma once
+
+#include <QMainWindow>
+#include <memory>
+
+class GameEngine;
+class GameWidget;
+
+/**
+ * @brief MainWindow - Qt main application window
+ */
+class MainWindow : public QMainWindow {
+    Q_OBJECT
+
+public:
+    explicit MainWindow(QWidget* parent = nullptr);
+    ~MainWindow();
+
+private:
+    void setupUI();
+    void connectSignals();
+
+    std::unique_ptr<GameEngine> m_engine;
+    GameWidget* m_gameWidget = nullptr;
+};
+
+

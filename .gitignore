@@ -1,0 +1,38 @@
+# Build directories
+build/
+bin/
+
+# IDE-specific files
+.idea/
+*.user
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cpack_install.cmake
+cmake_install.cmake
+CMakeLists.txt.user
+CTestTestfile.cmake
+install_manifest.txt
+Makefile
+
+# Executables and libraries
+*.exe
+*.dll
+*.so
+*.a
+
+# Object files
+*.obj
+*.o
+
+# Database files
+*.db
+*.sqlite
+*.sql
+
+# Log files
+*.log
+
+# Lock files
+*.lock

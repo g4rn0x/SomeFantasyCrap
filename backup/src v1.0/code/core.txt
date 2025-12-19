@@ -1,0 +1,550 @@
+==Constants.h==
+
+#pragma once
+
+// Game constants
+constexpr int MAX_INVENTORY_SIZE = 3;
+constexpr int MOVES_PER_LOCATION = 10;
+constexpr int TOTAL_LOCATIONS = 5;
+constexpr int MAX_LOCATIONS = 10;
+
+// Database constants
+//constexpr const char* DB_HOST = "localhost";
+//constexpr const char* DB_NAME = "maze_game";
+//constexpr const char* DB_USER = "root";
+//constexpr const char* DB_PASSWORD = "";
+//constexpr int DB_PORT = 3306;
+
+// Event probabilities (0.0 - 1.0)
+constexpr double EVENT_NOTE_CHANCE = 0.10;      // 10% chance for note
+constexpr double EVENT_ITEM_CHANCE = 0.20;      // 20% chance for item
+constexpr double EVENT_RIDDLE_CHANCE = 0.15;    // 15% chance for riddle
+
+// UI constants
+constexpr int WINDOW_WIDTH = 1200;
+constexpr int WINDOW_HEIGHT = 800;
+constexpr int LOG_MAX_LINES = 100;
+
+
+==GameEngine.cpp==
+
+#include "GameEngine.h"
+#include "../database/DatabaseManager.h"
+#include "../utils/RandomGenerator.h"
+#include "Constants.h"
+#include <QDebug>
+
+GameEngine::GameEngine(QObject* parent)
+    : QObject(parent)  // Initialize QObject first
+    , m_database(std::make_unique<DatabaseManager>())
+    , m_movesRemaining(MOVES_PER_LOCATION)
+{
+    RandomGenerator::initializeSeed();
+}
+
+GameEngine::~GameEngine() = default;
+
+void GameEngine::initializeGame()
+{
+    // Initialize database
+    if (!m_database->connect()) {
+        emit errorOccurred("Не удалось подключиться к базе данных");
+        return;
+    }
+
+    // Load game data from database
+    m_locations = m_database->loadLocations();
+    m_riddles = m_database->loadRiddles();
+    m_notes = m_database->loadNotes();
+
+    if (m_locations.isEmpty()) {
+        emit errorOccurred("Локации не загружены из БД");
+        return;
+    }
+
+    // Initialize game state
+    m_currentState.setCurrentLocationIndex(0)
+                   .setCurrentRoomIndex(0)
+                   .setGoldBars(0)
+                   .setGameOver(false)
+                   .setGameWon(false);
+
+    m_currentState.addLog("Добро пожаловать в Лабиринт!");
+    m_currentState.addLog("Выберите дверь, чтобы начать приключение.");
+
+    // Generate first room
+    m_currentState.setCurrentDoors(generateDoors());
+    generateRoomDescription(m_currentState);
+
+    emit gameInitialized(m_currentState);
+}
+
+void GameEngine::onDoorSelected(int doorIndex)
+{
+    // Используем текущий state
+    GameState newState = processMove(m_currentState, doorIndex);
+    m_currentState = newState;          // обновляем внутреннее состояние
+    emit gameStateChanged(m_currentState);
+}
+
+
+GameState GameEngine::processMove(const GameState& currentState, int doorIndex)
+{
+    GameState newState = currentState;
+    newState.setLoading(true);
+
+    if (doorIndex < 0 || doorIndex >= newState.getCurrentDoors().size()) {
+        newState.addLog("ОШИБКА: Неверный выбор двери");
+        newState.setLoading(false);
+        return newState;
+    }
+
+    const DoorData& door = newState.getCurrentDoors()[doorIndex];
+
+    // Process key requirements
+    if (!processKeyRequirement(newState, door)) {
+        newState.setLoading(false);
+        return newState;
+    }
+
+    // Advance room
+    int newRoomIndex = newState.getCurrentRoomIndex() + 1;
+    newState.setCurrentRoomIndex(newRoomIndex);
+    newState.addLog(QString("Вы вошли в комнату %1/10").arg(newRoomIndex));
+
+    // Check location transition
+    if (newRoomIndex >= MOVES_PER_LOCATION) {
+        handleLocationTransition(newState);
+    }
+
+    // Check win condition
+    if (checkWinCondition(newState)) {
+        newState.setGameWon(true);
+        newState.setGameOver(true);
+        newState.addLog("╔════════════════════════════════════════╗");
+        newState.addLog("║       ПОБЕДА! Вы прошли все уровни!   ║");
+        newState.addLog("╚════════════════════════════════════════╝");
+        newState.setLoading(false);
+        return newState;
+    }
+
+    // Generate new room if still in location
+    if (newRoomIndex < MOVES_PER_LOCATION) {
+        newState.setCurrentDoors(generateDoors());
+        handleEventGeneration(newState);
+        generateRoomDescription(newState);
+    }
+
+    newState.setLoading(false);
+    return newState;
+}
+
+void GameEngine::handleRiddleAnswer(const GameState& currentState, const QString& answer)
+{
+    GameState newState = currentState;
+    
+    const RiddleData* riddle = newState.getActiveRiddle();
+    if (!riddle) {
+        emit errorOccurred("Нет активной загадки");
+        return;
+    }
+
+    if (answer.toLower().trimmed() == riddle->answer.toLower().trimmed()) {
+        newState.addLog("✓ Правильно! Вы прошли мимо стража.");
+        newState.setActiveRiddle(nullptr);
+    } else {
+        newState.addLog(QString("✗ Неправильно. Ответ: %1").arg(riddle->answer));
+        newState.setActiveRiddle(nullptr);
+    }
+
+    emit gameStateChanged(newState);
+}
+
+bool GameEngine::checkWinCondition(const GameState& state) const
+{
+    return state.getCurrentLocationIndex() >= m_locations.size();
+}
+
+bool GameEngine::hasGameEnded(const GameState& state) const
+{
+    return state.isGameOver();
+}
+
+QVector<DoorData> GameEngine::generateDoors() const
+{
+    QVector<DoorData> doors;
+    int doorCount = RandomGenerator::random(2, 4);
+
+    // Always at least one normal door
+    doors.append({DoorType::NORMAL, "Обычная деревянная дверь"});
+
+    for (int i = 1; i < doorCount; ++i) {
+        double rand = RandomGenerator::randomDouble();
+        DoorType type;
+
+        if (rand < 0.4) {
+            type = DoorType::SILVER;
+        } else if (rand < 0.7) {
+            type = DoorType::GOLD;
+        } else {
+            type = DoorType::NORMAL;
+        }
+
+        doors.append({type, doorTypeToString(type) + " дверь"});
+    }
+
+    // Shuffle doors
+    if (doors.size() > 1) {
+        for (int i = doors.size() - 1; i > 0; --i) {
+            int j = RandomGenerator::random(0, i - 1);
+            std::swap(doors[i], doors[j]);
+        }
+    }
+    return doors;
+}
+
+bool GameEngine::processKeyRequirement(GameState& state, const DoorData& door)
+{
+    if (door.type == DoorType::SILVER) {
+        if (!state.hasItem(ItemType::SILVER_KEY)) {
+            state.addLog("⚠️ Дверь заперта! Нужен серебряный ключ.");
+            return false;
+        }
+        state.removeItem(ItemType::SILVER_KEY);
+        state.addLog("🔑 Вы открыли серебряную дверь!");
+        return true;
+    }
+
+    if (door.type == DoorType::GOLD) {
+        if (!state.hasItem(ItemType::GOLD_KEY)) {
+            state.addLog("⚠️ Дверь заперта! Нужен золотой ключ.");
+            return false;
+        }
+        state.removeItem(ItemType::GOLD_KEY);
+        state.addLog("✨ Вы открыли золотую дверь!");
+        state.setGoldBars(state.getGoldBars() + 1);
+        state.addLog(QString("💰 Золотых слитков: %1").arg(state.getGoldBars()));
+        return true;
+    }
+
+    state.addLog("Вы прошли через обычную дверь.");
+    return true;
+}
+
+void GameEngine::handleLocationTransition(GameState& state)
+{
+    int nextLocation = state.getCurrentLocationIndex() + 1;
+    state.setCurrentLocationIndex(nextLocation);
+    state.setCurrentRoomIndex(0);
+    state.addLog("");
+    state.addLog("╔════════════════════════════════════════╗");
+    state.addLog(QString("║  ЛОКАЦИЯ ПРОЙДЕНА! Уровень %1 завершён  ║").arg(nextLocation));
+    state.addLog("╚════════════════════════════════════════╝");
+    state.addLog("");
+}
+
+void GameEngine::handleEventGeneration(GameState& state)
+{
+    double eventRoll = RandomGenerator::randomDouble();
+
+    // Event: Note (10% chance)
+    if (eventRoll < EVENT_NOTE_CHANCE && !m_notes.isEmpty()) {
+        NoteData note = m_notes.takeFirst();
+        state.addNote(note);
+        state.addLog(QString("На полу найдена записка: \"%1\"").arg(note.content));
+        return;
+    }
+
+    // Event: Item (20% chance)
+    if (eventRoll < EVENT_ITEM_CHANCE) {
+        if (state.hasInventorySpace()) {
+            ItemType item = randomItem();
+            state.addItem(item);
+            state.addLog(QString("🎁 Вы нашли: %1").arg(itemTypeToString(item)));
+        } else {
+            state.addLog("🎁 Вы нашли ключ, но инвентарь полон!");
+        }
+        return;
+    }
+
+    // Event: Riddle (15% chance)
+    if (eventRoll > 0.85 && !m_riddles.isEmpty()) {
+        RiddleData riddle = m_riddles.takeFirst();
+        state.setActiveRiddle(std::make_shared<RiddleData>(riddle));
+        state.addLog("");
+        state.addLog("🧩 ПУТЬ ПРЕГРАЖДАЕТ ЗАГАДОЧНИК!");
+        state.addLog(QString("Загадка: %1").arg(riddle.question));
+    }
+}
+
+void GameEngine::generateRoomDescription(GameState& state)
+{
+    if (state.getCurrentLocationIndex() < m_locations.size()) {
+        const LocationData& loc = m_locations[state.getCurrentLocationIndex()];
+        QString description = QString(
+            "Вы входите в локацию \"%1\" (Тема: %2).\n"
+            "Это комната номер %3/10 на этаже. "
+            "Атмосфера мрачная и таинственная. "
+            "Вокруг тишина, только эхо ваших шагов."
+        ).arg(loc.name, loc.theme, QString::number(state.getCurrentRoomIndex() + 1));
+        
+        state.setRoomDescription(description);
+    }
+}
+
+ItemType GameEngine::randomItem() const
+{
+    return RandomGenerator::randomDouble() > 0.5
+        ? ItemType::SILVER_KEY
+        : ItemType::GOLD_KEY;
+}
+
+
+==GameEngine.h==
+
+#pragma once
+
+#include <QObject>
+#include <QString>
+#include <QVector>
+#include <memory>
+#include "GameState.h"
+#include "Types.h"
+
+class DatabaseManager;
+class Location;
+class Item;
+class Riddle;
+class Note;
+
+/**
+ * @brief GameEngine - Main game logic orchestrator
+ * Responsible for: game initialization, move processing, state transitions
+ * Follows Single Responsibility Principle
+ */
+class GameEngine : public QObject {
+    Q_OBJECT
+
+public:
+    explicit GameEngine(QObject* parent = nullptr);
+    ~GameEngine();
+
+    // Game lifecycle
+    void initializeGame();
+    GameState processMove(const GameState& currentState, int doorIndex);
+    void handleRiddleAnswer(const GameState& currentState, const QString& answer);
+
+    // State queries
+    bool checkWinCondition(const GameState& state) const;
+    bool hasGameEnded(const GameState& state) const;
+
+public slots:
+    void onDoorSelected(int doorIndex);
+    // Signal notification for UI
+signals:
+    void gameStateChanged(const GameState& newState);
+    void errorOccurred(const QString& error);
+    void gameInitialized(const GameState& initialState);
+
+private:
+    // Helper methods
+    QVector<DoorData> generateDoors() const;
+    bool processKeyRequirement(GameState& state, const DoorData& door);
+    void handleLocationTransition(GameState& state);
+    void handleEventGeneration(GameState& state);
+    void generateRoomDescription(GameState& state);
+    ItemType randomItem() const;
+
+    // Data members
+    std::unique_ptr<DatabaseManager> m_database;
+    QVector<LocationData> m_locations;
+    QVector<RiddleData> m_riddles;
+    QVector<NoteData> m_notes;
+    GameState m_currentState;
+    int m_moveCount = 0;
+    int m_movesRemaining;
+};
+
+
+==GameState.cpp==
+
+#include "GameState.h"
+#include <QMetaType>
+
+// Forward declare the type registration function
+void registerGameStateType();
+
+// Register GameState with Qt's meta-object system
+void registerGameStateType() {
+    static bool registered = false;
+    if (!registered) {
+        // Use a lambda to avoid direct template instantiation issues
+        []() {
+            static int typeId = qRegisterMetaType<GameState>("GameState");
+            Q_UNUSED(typeId);
+        }();
+        registered = true;
+    }
+}
+
+// Force registration at library load time
+namespace {
+    struct GameStateTypeRegistration {
+        GameStateTypeRegistration() {
+            registerGameStateType();
+        }
+    } gameStateTypeRegistration;
+
+
+==GameState.h==
+
+#pragma once
+
+#include <QString>
+#include <QVector>
+#include <QMetaType>
+#include "Types.h"
+#include "Constants.h"
+/**
+ * @brief GameState - Immutable representation of game state at any moment
+ * Follows immutability pattern for predictable state management
+ */
+// Forward declare the GameState class
+class GameState {
+public:
+    // Default constructor
+    GameState() = default;
+    
+    // Getters
+    int getCurrentLocationIndex() const { return m_currentLocationIndex; }
+    int getCurrentRoomIndex() const { return m_currentRoomIndex; }
+    int getGoldBars() const { return m_goldBars; }
+    const QVector<ItemType>& getInventory() const { return m_inventory; }
+    const QVector<NoteData>& getNotes() const { return m_notes; }
+    const QVector<QString>& getLogs() const { return m_logs; }
+    bool isGameOver() const { return m_isGameOver; }
+    bool isGameWon() const { return m_gameWon; }
+    const RiddleData* getActiveRiddle() const { return m_activeRiddle.get(); }
+    const QVector<DoorData>& getCurrentDoors() const { return m_doors; }
+    const QString& getRoomDescription() const { return m_roomDescription; }
+    bool isLoading() const { return m_isLoading; }
+
+    // Setters (Builder pattern)
+    GameState& setCurrentLocationIndex(int index) { m_currentLocationIndex = index; return *this; }
+    GameState& setCurrentRoomIndex(int index) { m_currentRoomIndex = index; return *this; }
+    GameState& setGoldBars(int bars) { m_goldBars = bars; return *this; }
+    GameState& setInventory(const QVector<ItemType>& inv) { m_inventory = inv; return *this; }
+    GameState& setNotes(const QVector<NoteData>& notes) { m_notes = notes; return *this; }
+    GameState& setLogs(const QVector<QString>& logs) { m_logs = logs; return *this; }
+    GameState& setGameOver(bool value) { m_isGameOver = value; return *this; }
+    GameState& setGameWon(bool value) { m_gameWon = value; return *this; }
+    GameState& setActiveRiddle(std::shared_ptr<RiddleData> riddle) { m_activeRiddle = riddle; return *this; }
+    GameState& setCurrentDoors(const QVector<DoorData>& doors) { m_doors = doors; return *this; }
+    GameState& setRoomDescription(const QString& desc) { m_roomDescription = desc; return *this; }
+    GameState& setLoading(bool value) { m_isLoading = value; return *this; }
+
+    // Utility methods
+    bool hasInventorySpace() const { return m_inventory.size() < MAX_INVENTORY_SIZE; }
+    void addLog(const QString& message) { m_logs.append(message); }
+    void addItem(ItemType item) { if (hasInventorySpace()) m_inventory.append(item); }
+    bool hasItem(ItemType item) const { return m_inventory.contains(item); }
+    void removeItem(ItemType item) { m_inventory.removeOne(item); }
+    void addNote(const NoteData& note) { m_notes.append(note); }
+
+private:
+    int m_currentLocationIndex = 0;
+    int m_currentRoomIndex = 0;
+    int m_goldBars = 0;
+    QVector<ItemType> m_inventory;
+    QVector<NoteData> m_notes;
+    QVector<QString> m_logs;
+    bool m_isGameOver = false;
+    bool m_gameWon = false;
+    std::shared_ptr<RiddleData> m_activeRiddle = nullptr;
+    QVector<DoorData> m_doors;
+    QString m_roomDescription;
+    bool m_isLoading = false;
+};
+
+
+==Types.h==
+
+#pragma once
+
+#include <QString>
+#include <QVector>
+#include <memory>
+
+enum class DoorType {
+    NORMAL,
+    SILVER,
+    GOLD
+};
+
+enum class ItemType {
+    SILVER_KEY,
+    GOLD_KEY
+};
+
+enum class ItemRarity {
+    COMMON,
+    RARE,
+    LEGENDARY
+};
+
+// Domain models
+struct LocationData {
+    int id;
+    QString name;
+    QString theme;
+    QString description;
+};
+
+struct ItemData {
+    int id;
+    ItemType type;
+    QString name;
+    QString description;
+    ItemRarity rarity;
+};
+
+struct RiddleData {
+    int id;
+    QString question;
+    QString answer;
+    int difficulty;
+};
+
+struct NoteData {
+    int id;
+    QString content;
+    int locationId;
+};
+
+struct DoorData {
+    DoorType type;
+    QString description;
+};
+
+// Conversion functions for enums
+inline QString doorTypeToString(DoorType type) {
+    switch (type) {
+        case DoorType::NORMAL: return "Обычная";
+        case DoorType::SILVER: return "Серебряная";
+        case DoorType::GOLD: return "Золотая";
+    }
+    return "";
+}
+
+inline QString itemTypeToString(ItemType type) {
+    switch (type) {
+        case ItemType::SILVER_KEY: return "Серебряный ключ";
+        case ItemType::GOLD_KEY: return "Золотой ключ";
+    }
+    return "";
+}
+
+
+
+
+

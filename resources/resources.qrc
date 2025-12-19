@@ -1,0 +1,12 @@
+<RCC>
+    <qresource prefix="/">
+        <file>assets/fonts/PressStart2P-Regular.ttf</file>
+        <file>assets/inventory/gold_key.png</file>
+        <file>assets/inventory/silver_key.png</file>
+        <file>assets/locations/location1.png</file>
+        <file>assets/locations/location2.png</file>
+        <file>assets/locations/location3.png</file>
+        <file>assets/locations/location4.png</file>
+        <file>assets/locations/location5.png</file>
+    </qresource>
+</RCC>

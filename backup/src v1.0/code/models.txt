@@ -1,0 +1,225 @@
+==Door.cpp==
+
+#include "Door.h"
+// Empty - all implementation is in header
+
+
+==Door.h==
+
+#pragma once
+
+#include <QString>
+#include "../core/Types.h"
+
+/**
+ * @brief Door - Domain model for doors in the maze
+ */
+class Door {
+public:
+    Door() = default;
+    Door(DoorType type, const QString& description = "")
+        : m_type(type), m_description(description) {}
+
+    // Getters
+    DoorType getType() const { return m_type; }
+    const QString& getDescription() const { return m_description; }
+    bool isLocked() const { return m_type != DoorType::NORMAL; }
+
+    // Setters
+    void setType(DoorType type) { m_type = type; }
+    void setDescription(const QString& desc) { m_description = desc; }
+
+    // Convert to struct
+    DoorData toDoorData() const {
+        return {m_type, m_description};
+    }
+
+private:
+    DoorType m_type = DoorType::NORMAL;
+    QString m_description;
+};
+
+
+==Item.cpp==
+
+include "Item.h"
+// Empty - all implementation is in header
+
+
+==Item.h==
+
+#pragma once
+
+#include <QString>
+#include "../core/Types.h"
+
+/**
+ * @brief Item - Domain model for inventory items
+ */
+class Item {
+public:
+    Item() = default;
+    Item(int id, ItemType type, const QString& name, const QString& description, ItemRarity rarity)
+        : m_id(id), m_type(type), m_name(name), m_description(description), m_rarity(rarity) {}
+
+    // Getters
+    int getId() const { return m_id; }
+    ItemType getType() const { return m_type; }
+    const QString& getName() const { return m_name; }
+    const QString& getDescription() const { return m_description; }
+    ItemRarity getRarity() const { return m_rarity; }
+
+    // Setters
+    void setName(const QString& name) { m_name = name; }
+    void setDescription(const QString& desc) { m_description = desc; }
+    void setRarity(ItemRarity rarity) { m_rarity = rarity; }
+
+    // Convert to struct
+    ItemData toItemData() const {
+        return {m_id, m_type, m_name, m_description, m_rarity};
+    }
+
+private:
+    int m_id = -1;
+    ItemType m_type = ItemType::SILVER_KEY;
+    QString m_name;
+    QString m_description;
+    ItemRarity m_rarity = ItemRarity::COMMON;
+};
+
+
+==Location.cpp==
+
+#include "Location.h"
+// Empty - all implementation is in header
+
+
+==Location.h==
+
+#pragma once
+
+#include <QString>
+#include "../core/Types.h"
+
+/**
+ * @brief Location - Domain model for game location
+ */
+class Location {
+public:
+    Location() = default;
+    Location(int id, const QString& name, const QString& theme, const QString& description)
+        : m_id(id), m_name(name), m_theme(theme), m_description(description) {}
+
+    // Getters
+    int getId() const { return m_id; }
+    const QString& getName() const { return m_name; }
+    const QString& getTheme() const { return m_theme; }
+    const QString& getDescription() const { return m_description; }
+
+    // Setters
+    void setName(const QString& name) { m_name = name; }
+    void setTheme(const QString& theme) { m_theme = theme; }
+    void setDescription(const QString& desc) { m_description = desc; }
+
+    // Convert to struct
+    LocationData toLocationData() const {
+        return {m_id, m_name, m_theme, m_description};
+    }
+
+private:
+    int m_id = -1;
+    QString m_name;
+    QString m_theme;
+    QString m_description;
+};
+
+
+==Note.cpp==
+
+#include "Note.h"
+// Empty - all implementation is in header
+
+
+==Note.h==
+
+#pragma once
+
+#include <QString>
+#include "../core/Types.h"
+
+/**
+ * @brief Note - Domain model for game notes/hints
+ */
+class Note {
+public:
+    Note() = default;
+    Note(int id, const QString& content, int locationId = -1)
+        : m_id(id), m_content(content), m_locationId(locationId) {}
+
+    // Getters
+    int getId() const { return m_id; }
+    const QString& getContent() const { return m_content; }
+    int getLocationId() const { return m_locationId; }
+
+    // Setters
+    void setContent(const QString& content) { m_content = content; }
+    void setLocationId(int id) { m_locationId = id; }
+
+    // Convert to struct
+    NoteData toNoteData() const {
+        return {m_id, m_content, m_locationId};
+    }
+
+private:
+    int m_id = -1;
+    QString m_content;
+    int m_locationId = -1;
+};
+
+
+==Riddle.cpp==
+
+#include "Riddle.h"
+// Empty - all implementation is in header
+
+
+==Riddle.h==
+
+#pragma once
+
+#include <QString>
+#include "../core/Types.h"
+
+/**
+ * @brief Riddle - Domain model for game riddles
+ */
+class Riddle {
+public:
+    Riddle() = default;
+    Riddle(int id, const QString& question, const QString& answer, int difficulty = 1)
+        : m_id(id), m_question(question), m_answer(answer), m_difficulty(difficulty) {}
+
+    // Getters
+    int getId() const { return m_id; }
+    const QString& getQuestion() const { return m_question; }
+    const QString& getAnswer() const { return m_answer; }
+    int getDifficulty() const { return m_difficulty; }
+
+    // Setters
+    void setQuestion(const QString& q) { m_question = q; }
+    void setAnswer(const QString& a) { m_answer = a; }
+    void setDifficulty(int diff) { m_difficulty = diff; }
+
+    // Convert to struct
+    RiddleData toRiddleData() const {
+        return {m_id, m_question, m_answer, m_difficulty};
+    }
+
+private:
+    int m_id = -1;
+    QString m_question;
+    QString m_answer;
+    int m_difficulty = 1;
+};
+
+
